@@ -4,7 +4,6 @@ echo "--------------------------------------"
 sudo install -p -m 644 ./bin/$(uname -r)/arducam.ko  /lib/modules/$(uname -r)/kernel/drivers/media/i2c/
 sudo install -p -m 644 ./bin/$(uname -r)/arducam.dtbo /boot/overlays/
 sudo /sbin/depmod -a $(uname -r)
-sudo install -p -m 777 ./arducamstill/arducamstill /usr/bin
 awk 'BEGIN{ count=0 }       \
 {                           \
     if($1 == "dtoverlay=arducam"){       \

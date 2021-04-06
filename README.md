@@ -8,5 +8,6 @@ Pivariety is a Raspberry Pi V4L2 kernel camera driver framework which can suppor
 A single-camera driver for all is the main goal of Pivariety project, the user doesn't need to develop their own camera driver for Nvidia Jetson boards and even more, user can switch between different Arducam cameras without switching camera driver. Software compatibility for Jetvariety V4L2 driver is also another consideration for this project.
 Current driver supports the following kerner version, for other kernel please send us request for adding support or source code to compile by yourself.
 
+- 5.10.17
 - 5.10.17-v7+
 - 5.10-17-v7l+

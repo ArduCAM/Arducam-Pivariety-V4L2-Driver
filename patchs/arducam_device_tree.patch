@@ -1,0 +1,131 @@
+diff --git a/arch/arm/boot/dts/overlays/Makefile b/arch/arm/boot/dts/overlays/Makefile
+index ef0a0cc3da99..db1feec04239 100644
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -91,6 +91,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
+ 	i2s-gpio28-31.dtbo \
+ 	ilitek251x.dtbo \
+ 	imx219.dtbo \
++	arducam.dtbo \
+ 	imx290.dtbo \
+ 	imx477.dtbo \
+ 	iqaudio-codec.dtbo \
+diff --git a/arch/arm/boot/dts/overlays/arducam-overlay.dts b/arch/arm/boot/dts/overlays/arducam-overlay.dts
+new file mode 100644
+index 000000000000..9aa2b2286364
+--- /dev/null
++++ b/arch/arm/boot/dts/overlays/arducam-overlay.dts
+@@ -0,0 +1,113 @@
++// SPDX-License-Identifier: GPL-2.0-only
++// Definitions for arducam camera module on VC I2C bus
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/{
++	compatible = "brcm,bcm2835";
++
++	fragment@0 {
++		target = <&i2c_csi_dsi>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++
++			arducam: arducam@0c {
++				compatible = "arducam, arducam-pivariety";
++				reg = <0x0c>;
++				status = "okay";
++
++				clocks = <&arducam_clk>;
++				clock-names = "xclk";
++
++				VANA-supply = <&cam1_reg>;	/* 2.8v */
++				VDIG-supply = <&arducam_vdig>;	/* 1.8v */
++				VDDL-supply = <&arducam_vddl>;	/* 1.2v */
++
++				rotation = <180>;
++
++				port {
++					arducam_0: endpoint {
++						remote-endpoint = <&csi1_ep>;
++						clock-lanes = <0>;
++						data-lanes = <1 2>;
++						clock-noncontinuous;
++						link-frequencies =
++							/bits/ 64 <456000000>;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&csi1>;
++		__overlay__ {
++			status = "okay";
++
++			port {
++				csi1_ep: endpoint {
++					remote-endpoint = <&arducam_0>;
++					clock-lanes = <0>;
++					data-lanes = <1 2>;
++					clock-noncontinuous;
++				};
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&i2c0if>;
++		__overlay__ {
++			status = "okay";
++		};
++	};
++
++	fragment@3 {
++		target-path="/";
++		__overlay__ {
++			arducam_vdig: fixedregulator@1 {
++				compatible = "regulator-fixed";
++				regulator-name = "arducam_vdig";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++			};
++			arducam_vddl: fixedregulator@2 {
++				compatible = "regulator-fixed";
++				regulator-name = "arducam_vddl";
++				regulator-min-microvolt = <1200000>;
++				regulator-max-microvolt = <1200000>;
++			};
++
++			arducam_clk: camera-clk {
++				compatible = "fixed-clock";
++				#clock-cells = <0>;
++				clock-frequency = <24000000>;
++			};
++		};
++	};
++
++	fragment@4 {
++		target = <&i2c0mux>;
++		__overlay__ {
++			status = "okay";
++		};
++	};
++
++	fragment@5 {
++		target = <&cam1_reg>;
++		__overlay__ {
++			status = "okay";
++			regulator-name = "arducam_vana";
++			regulator-min-microvolt = <2800000>;
++			regulator-max-microvolt = <2800000>;
++		};
++	};
++
++	__overrides__ {
++		rotation = <&arducam>,"rotation:0";
++	};
++};

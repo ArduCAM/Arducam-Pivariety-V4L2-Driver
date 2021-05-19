@@ -258,6 +258,7 @@ struct arducam {
 
 	/* Current mode */
 	const struct arducam_mode *mode;
+	int bayer_order_volatile;
 	struct v4l2_rect crop;
 	/*
 	 * Mutex for serialized access:
@@ -398,6 +399,9 @@ int arducam_write(struct i2c_client *client, u16 addr, u32 value)
 static u32 arducam_get_format_code(struct arducam *priv, u32 code)
 {
 	unsigned int i;
+
+	if (!priv->bayer_order_volatile)
+		return code;
 
 	lockdep_assert_held(&priv->mutex);
 
@@ -1149,6 +1153,7 @@ static int arducam_enum_pixformat(struct arducam *priv)
 	u32 mbus_code = 0;
 	int pixformat_type;
 	int bayer_order;
+	int bayer_order_not_volatile;
 	int lanes;
 	int index = 0;
 	int num_pixformat = 0;
@@ -1158,6 +1163,15 @@ static int arducam_enum_pixformat(struct arducam *priv)
 						PIXFORMAT_INDEX_REG, PIXFORMAT_TYPE_REG);
 
 	if (num_pixformat < 0)
+		goto err;
+
+	ret = arducam_read(client, FLIPS_DONT_CHANGE_ORDER_REG, &bayer_order_not_volatile);
+	if (bayer_order_not_volatile == NO_DATA_AVAILABLE)
+		priv->bayer_order_volatile = 1;
+	else
+		priv->bayer_order_volatile = !bayer_order_not_volatile;
+
+	if (ret < 0)
 		goto err;
 
 	priv->supported_formats = devm_kzalloc(&client->dev,

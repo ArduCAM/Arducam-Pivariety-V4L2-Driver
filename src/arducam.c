@@ -1372,12 +1372,14 @@ static int arducam_enum_controls(struct arducam *priv)
 		switch(id) {
 		case V4L2_CID_HFLIP:
 			priv->hflip = priv->ctrls[index];
-			priv->hflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
+			if (priv->bayer_order_volatile)
+				priv->hflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
 			break;
 
 		case V4L2_CID_VFLIP:
 			priv->vflip = priv->ctrls[index];
-			priv->vflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
+			if (priv->bayer_order_volatile)
+				priv->vflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
 			break;
 
 		case V4L2_CID_HBLANK:

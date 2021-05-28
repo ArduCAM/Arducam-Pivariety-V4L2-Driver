@@ -140,10 +140,10 @@ index 6a00378cb351..57b276c4651f 100644
 +obj-m += arducam.o
 diff --git a/drivers/media/i2c/arducam.c b/drivers/media/i2c/arducam.c
 new file mode 100644
-index 000000000000..a55c064b71c2
+index 000000000000..d0633d051f21
 --- /dev/null
 +++ b/drivers/media/i2c/arducam.c
-@@ -0,0 +1,1560 @@
+@@ -0,0 +1,1576 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * A V4L2 driver for Arducam Pivariety Cameras
@@ -404,6 +404,7 @@ index 000000000000..a55c064b71c2
 +
 +	/* Current mode */
 +	const struct arducam_mode *mode;
++	int bayer_order_volatile;
 +	struct v4l2_rect crop;
 +	/*
 +	 * Mutex for serialized access:
@@ -544,6 +545,9 @@ index 000000000000..a55c064b71c2
 +static u32 arducam_get_format_code(struct arducam *priv, u32 code)
 +{
 +	unsigned int i;
++
++	if (!priv->bayer_order_volatile)
++		return code;
 +
 +	lockdep_assert_held(&priv->mutex);
 +
@@ -1295,6 +1299,7 @@ index 000000000000..a55c064b71c2
 +	u32 mbus_code = 0;
 +	int pixformat_type;
 +	int bayer_order;
++	int bayer_order_not_volatile;
 +	int lanes;
 +	int index = 0;
 +	int num_pixformat = 0;
@@ -1304,6 +1309,15 @@ index 000000000000..a55c064b71c2
 +						PIXFORMAT_INDEX_REG, PIXFORMAT_TYPE_REG);
 +
 +	if (num_pixformat < 0)
++		goto err;
++
++	ret = arducam_read(client, FLIPS_DONT_CHANGE_ORDER_REG, &bayer_order_not_volatile);
++	if (bayer_order_not_volatile == NO_DATA_AVAILABLE)
++		priv->bayer_order_volatile = 1;
++	else
++		priv->bayer_order_volatile = !bayer_order_not_volatile;
++
++	if (ret < 0)
 +		goto err;
 +
 +	priv->supported_formats = devm_kzalloc(&client->dev,
@@ -1504,12 +1518,14 @@ index 000000000000..a55c064b71c2
 +		switch(id) {
 +		case V4L2_CID_HFLIP:
 +			priv->hflip = priv->ctrls[index];
-+			priv->hflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
++			if (priv->bayer_order_volatile)
++				priv->hflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
 +			break;
 +
 +		case V4L2_CID_VFLIP:
 +			priv->vflip = priv->ctrls[index];
-+			priv->vflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
++			if (priv->bayer_order_volatile)
++				priv->vflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
 +			break;
 +
 +		case V4L2_CID_HBLANK:
@@ -1706,10 +1722,10 @@ index 000000000000..a55c064b71c2
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/media/i2c/arducam.h b/drivers/media/i2c/arducam.h
 new file mode 100644
-index 000000000000..febb544d0a33
+index 000000000000..9480f6de51d0
 --- /dev/null
 +++ b/drivers/media/i2c/arducam.h
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,129 @@
 +#ifndef _ARDUCAM_CSI_2_H_
 +#define _ARDUCAM_CSI_2_H_
 +//typedef unsigned long u32;
@@ -1726,10 +1742,11 @@ index 000000000000..febb544d0a33
 +#define DEVICE_ID_REG       (DEVICE_REG_BASE | 0x0003)
 +#define SYSTEM_IDLE_REG		(DEVICE_REG_BASE | 0x0007)
 +
-+#define PIXFORMAT_INDEX_REG (PIXFORMAT_REG_BASE | 0x0000)
-+#define PIXFORMAT_TYPE_REG  (PIXFORMAT_REG_BASE | 0x0001)
-+#define PIXFORMAT_ORDER_REG (PIXFORMAT_REG_BASE | 0x0002)
-+#define MIPI_LANES_REG      (PIXFORMAT_REG_BASE | 0x0003)
++#define PIXFORMAT_INDEX_REG			(PIXFORMAT_REG_BASE | 0x0000)
++#define PIXFORMAT_TYPE_REG			(PIXFORMAT_REG_BASE | 0x0001)
++#define PIXFORMAT_ORDER_REG			(PIXFORMAT_REG_BASE | 0x0002)
++#define MIPI_LANES_REG				(PIXFORMAT_REG_BASE | 0x0003)
++#define FLIPS_DONT_CHANGE_ORDER_REG (PIXFORMAT_REG_BASE | 0x0004)
 +
 +#define RESOLUTION_INDEX_REG (FORMAT_REG_BASE | 0x0000)
 +#define FORMAT_WIDTH_REG    (FORMAT_REG_BASE | 0x0001)

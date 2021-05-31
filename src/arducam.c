@@ -269,6 +269,7 @@ struct arducam {
 	int power_count;
 	/* Streaming on/off */
 	bool streaming;
+	bool wait_until_free;
 	struct v4l2_ctrl *ctrls[32];
 };
 
@@ -505,8 +506,12 @@ static int arducam_s_ctrl(struct v4l2_ctrl *ctrl)
 	if (ret < 0)
 		return -EINVAL;
 
-	usleep_range(200, 210);
-	// wait_for_free(priv->client, 1);
+	// When starting streaming, controls are set in batches, 
+	// and the short interval will cause some controls to be unsuccessfully set.
+	if (priv->wait_until_free)
+		wait_for_free(priv->client, 1);
+	else
+		usleep_range(200, 210);
 
 	return 0;
 }
@@ -728,8 +733,11 @@ static int arducam_start_streaming(struct arducam *arducam)
 
 	wait_for_free(client, 2);
 
+	arducam->wait_until_free = true;
 	/* Apply customized values from user */
 	ret =  __v4l2_ctrl_handler_setup(arducam->sd.ctrl_handler);
+
+	arducam->wait_until_free = false;
 	if (ret)
 		return ret;
 

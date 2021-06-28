@@ -273,6 +273,10 @@ struct arducam {
 	struct v4l2_ctrl *ctrls[32];
 };
 
+static int is_raw(int pixformat);
+static u32 data_type_to_mbus_code(int data_type, int bayer_order);
+
+
 static inline struct arducam *to_arducam(struct v4l2_subdev *_sd)
 {
 	return container_of(_sd, struct arducam, sd);
@@ -397,26 +401,26 @@ int arducam_write(struct i2c_client *client, u16 addr, u32 value)
 }
 
 /* Get bayer order based on flip setting. */
-static u32 arducam_get_format_code(struct arducam *priv, u32 code)
+static u32 arducam_get_format_code(struct arducam *priv, struct arducam_format *format)
 {
-	unsigned int i;
+	unsigned int i, index;
 
 	if (!priv->bayer_order_volatile)
-		return code;
+		return data_type_to_mbus_code(format->data_type, format->bayer_order);
 
 	lockdep_assert_held(&priv->mutex);
 
-	for (i = 0; i < ARRAY_SIZE(codes); i++)
-		if (codes[i] == code)
-			break;
+	i = format->bayer_order;
 
-	if (i >= ARRAY_SIZE(codes))
-		return code;
+	index = i;
 
-	i = (i & ~3) | (priv->vflip->val ? 2 : 0) |
-	    (priv->hflip->val ? 1 : 0);
+	i = (priv->hflip->val ? i^1 : i);
+	i = (priv->vflip->val ? i^2 : i);
 
-	return codes[i];
+	v4l2_dbg(1, debug, priv->client, "%s: before: %d, after: %d.\n",
+			 __func__, index, i);
+
+	return data_type_to_mbus_code(format->data_type, i);
 }
 
 /* Power/clock management functions */
@@ -491,9 +495,9 @@ static int arducam_s_ctrl(struct v4l2_ctrl *ctrl)
 
 	if (ctrl->id == V4L2_CID_VFLIP || ctrl->id == V4L2_CID_HFLIP) {
 		for (i = 0; i < num_supported_formats; i++) {
-			supported_formats[i].mbus_code =
+			supported_formats[i].mbus_code = 
 				arducam_get_format_code(
-					priv, supported_formats[i].mbus_code);
+					priv, &supported_formats[i]);
 		}
 	}
 
@@ -682,7 +686,7 @@ static int arducam_csi2_set_fmt(struct v4l2_subdev *sd,
 	if (i < 0)
 		return -EINVAL;
 
-	format->format.code = arducam_get_format_code(priv, format->format.code);
+	// format->format.code = arducam_get_format_code(priv, format->format.code);
 
 	for (j = 0; j < supported_formats[i].num_resolution_set; j++) {
 		if (supported_formats[i].resolution_set[j].width 
@@ -1203,6 +1207,7 @@ static int arducam_enum_pixformat(struct arducam *priv)
 		mbus_code = data_type_to_mbus_code(pixformat_type, bayer_order);
 		priv->supported_formats[index].index = index;
 		priv->supported_formats[index].mbus_code = mbus_code;
+		priv->supported_formats[index].bayer_order = bayer_order;
 		priv->supported_formats[index].data_type = pixformat_type;
 		if (arducam_enum_resolution(client,
 				&priv->supported_formats[index]))
@@ -1215,7 +1220,7 @@ static int arducam_enum_pixformat(struct arducam *priv)
 	priv->current_format_idx = 0;
 	priv->current_resolution_idx = 0;
 	priv->lanes = lanes;
-	arducam_add_extension_pixformat(priv);
+	// arducam_add_extension_pixformat(priv);
 	return 0;
 
 err:

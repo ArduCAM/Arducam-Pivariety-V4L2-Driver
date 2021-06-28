@@ -121,6 +121,7 @@ struct arducam_resolution {
 struct arducam_format {
 	u32 index;
 	u32 mbus_code;
+	u32 bayer_order;
 	u32 data_type;
 	u32 num_resolution_set;
 	struct arducam_resolution *resolution_set;

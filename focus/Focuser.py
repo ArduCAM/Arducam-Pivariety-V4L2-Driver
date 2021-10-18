@@ -47,6 +47,9 @@ class Focuser:
                 self.opts[Focuser.OPT_FOCUS]["DEF_VALUE"] = ctrl['default']
                 self.focus_value = v4l2_utils.get_ctrl(self.fd, Focuser.FOCUS_ID)
         
+        if not self.hasFocus:
+            raise RuntimeError("Device {} has no focus_absolute control.".format(self.dev))
+
     def read(self):
         return self.focus_value
 
@@ -86,6 +89,9 @@ class Focuser:
             value = info["MIN_VALUE"]
         self.write(value)
         print("write: {}".format(value))
+
+    def __del__(self):
+        self.fd.close()
 
 pass 
 

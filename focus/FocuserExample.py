@@ -30,8 +30,8 @@ from Focuser import Focuser
 def parse_cmdline():
     parser = argparse.ArgumentParser(description='Arducam Controller.')
 
-    parser.add_argument('-d', '--device', type=int, nargs=None, default=0,
-                        help='Specify the device number. default: 0.')
+    parser.add_argument('-d', '--device', nargs=None, default='/dev/video0',
+                        help='Specify the device number. default: /dev/video0.')
 
     return parser.parse_args()
 

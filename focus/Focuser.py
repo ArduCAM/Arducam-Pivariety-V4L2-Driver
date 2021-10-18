@@ -22,23 +22,38 @@
     OR OTHER DEALINGS IN THE SOFTWARE.
 '''
 
-import sys
+import v4l2_utils
 import time
 import os
 class Focuser:
+    FOCUS_ID = 0x009a090a
     dev = None
 
     def __init__(self, dev=0):
         self.focus_value = 0
         self.dev = dev
-        pass
+
+        if type(dev) == int or (type(dev) == str and dev.isnumeric()):
+            self.dev = "/dev/video{}".format(dev)
+
+        self.fd = open(self.dev, 'r')
+        self.ctrls = v4l2_utils.get_ctrls(self.fd)
+        self.hasFocus = False
+        for ctrl in self.ctrls:
+            if ctrl['id'] == Focuser.FOCUS_ID:
+                self.hasFocus = True
+                self.opts[Focuser.OPT_FOCUS]["MIN_VALUE"] = ctrl['minimum']
+                self.opts[Focuser.OPT_FOCUS]["MAX_VALUE"] = ctrl['maximum']
+                self.opts[Focuser.OPT_FOCUS]["DEF_VALUE"] = ctrl['default']
+                self.focus_value = v4l2_utils.get_ctrl(self.fd, Focuser.FOCUS_ID)
         
     def read(self):
         return self.focus_value
 
     def write(self, value):
         self.focus_value = value
-        os.system("v4l2-ctl -d {} -c focus_absolute={}".format(self.dev, value))
+        # os.system("v4l2-ctl -d {} -c focus_absolute={}".format(self.dev, value))
+        v4l2_utils.set_ctrl(self.fd, Focuser.FOCUS_ID, value)
 
     OPT_BASE    = 0x1000
     OPT_FOCUS   = OPT_BASE | 0x01

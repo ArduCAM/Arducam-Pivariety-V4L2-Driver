@@ -3,8 +3,11 @@ try:
 except Exception as e:
     print(e)
     print("Try to install v4l2-fix")
-    import pip
-    pip.main(['install', 'v4l2-fix'])
+    try:
+        from pip import main as pipmain
+    except ImportError:
+        from pip._internal import main as pipmain
+    pipmain(['install', 'v4l2-fix'])
     print("\nTry to run the focus program again.")
     exit(0)
 

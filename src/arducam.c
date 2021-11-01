@@ -85,6 +85,16 @@
 #define arducam_TEST_PATTERN_GREY_COLOR	3
 #define arducam_TEST_PATTERN_PN9		4
 
+/* Embedded metadata stream structure */
+#define ARDUCAM_EMBEDDED_LINE_WIDTH 16384
+#define ARDUCAM_NUM_EMBEDDED_LINES 1
+
+enum pad_types {
+	IMAGE_PAD,
+	METADATA_PAD,
+	NUM_PADS
+};
+
 // #define VBLANK_TEST
 static int debug = 0;
 module_param(debug, int, 0644);
@@ -234,7 +244,7 @@ static const struct arducam_mode supported_modes[] = {
 
 struct arducam {
 	struct v4l2_subdev sd;
-	struct media_pad pad;
+	struct media_pad pad[NUM_PADS];
 
 	struct v4l2_fwnode_endpoint ep; /* the parsed DT endpoint info */
 	struct clk *xclk; /* system clock to arducam */
@@ -473,14 +483,24 @@ static int arducam_power_off(struct device *dev)
 
 static int arducam_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
+	struct arducam *arducam = to_arducam(sd);
 	struct v4l2_mbus_framefmt *try_fmt =
-		v4l2_subdev_get_try_format(sd, fh->pad, 0);
+		v4l2_subdev_get_try_format(sd, fh->pad, IMAGE_PAD);
+
+	struct v4l2_mbus_framefmt *try_fmt_meta =
+		v4l2_subdev_get_try_format(sd, fh->pad, METADATA_PAD);
 
 	/* Initialize try_fmt */
-	try_fmt->width = supported_modes[0].width;
-	try_fmt->height = supported_modes[0].height;
-	try_fmt->code = MEDIA_BUS_FMT_SBGGR10_1X10;
+	try_fmt->width = arducam->supported_formats[0].resolution_set->width;
+	try_fmt->height = arducam->supported_formats[0].resolution_set->height;
+	try_fmt->code = arducam->supported_formats[0].mbus_code;
 	try_fmt->field = V4L2_FIELD_NONE;
+
+	/* Initialize try_fmt for the embedded metadata pad */
+	try_fmt_meta->width = ARDUCAM_EMBEDDED_LINE_WIDTH;
+	try_fmt_meta->height = ARDUCAM_NUM_EMBEDDED_LINES;
+	try_fmt_meta->code = MEDIA_BUS_FMT_SENSOR_DATA;
+	try_fmt_meta->field = V4L2_FIELD_NONE;
 
 	return 0;
 }
@@ -534,11 +554,21 @@ static int arducam_csi2_enum_mbus_code(
 	struct arducam_format *supported_formats = priv->supported_formats;
 	int num_supported_formats = priv->num_supported_formats;
 	
-	v4l2_dbg(1, debug, sd, "%s: index = (%d)\n", __func__, code->index);
-	if (code->index >= num_supported_formats)
+	if (code->pad >= NUM_PADS)
 		return -EINVAL;
-	// code->code = MEDIA_BUS_FMT_Y8_1X8;
-	code->code = supported_formats[code->index].mbus_code;
+
+	v4l2_dbg(1, debug, sd, "%s: index = (%d)\n", __func__, code->index);
+	
+	if (code->pad == IMAGE_PAD) {
+		if (code->index >= num_supported_formats)
+			return -EINVAL;
+		code->code = supported_formats[code->index].mbus_code;
+	} else {
+		if (code->index > 0)
+			return -EINVAL;
+
+		code->code = MEDIA_BUS_FMT_SENSOR_DATA;
+	}
 
 	return 0;
 }
@@ -552,20 +582,44 @@ static int arducam_csi2_enum_framesizes(
 	struct arducam *priv = to_arducam(sd);
 	struct arducam_format *supported_formats = priv->supported_formats;
 	int num_supported_formats = priv->num_supported_formats;
+
+	if (fse->pad >= NUM_PADS)
+		return -EINVAL;
+
 	v4l2_dbg(1, debug, sd, "%s: code = (0x%X), index = (%d)\n",
 			 __func__, fse->code, fse->index);
-	for (i = 0; i < num_supported_formats; i++) {
-		if (fse->code == supported_formats[i].mbus_code) {
-			if (fse->index >= supported_formats[i].num_resolution_set)
-				return -EINVAL;
-			fse->min_width = fse->max_width =
-				supported_formats[i].resolution_set[fse->index].width;
-			fse->min_height = fse->max_height =
-				supported_formats[i].resolution_set[fse->index].height;
-			return 0;
+
+	if (fse->pad == IMAGE_PAD) {
+		for (i = 0; i < num_supported_formats; i++) {
+			if (fse->code == supported_formats[i].mbus_code) {
+				if (fse->index >= supported_formats[i].num_resolution_set)
+					return -EINVAL;
+				fse->min_width = fse->max_width =
+					supported_formats[i].resolution_set[fse->index].width;
+				fse->min_height = fse->max_height =
+					supported_formats[i].resolution_set[fse->index].height;
+				return 0;
+			}
 		}
+	} else {
+		if (fse->code != MEDIA_BUS_FMT_SENSOR_DATA || fse->index > 0)
+			return -EINVAL;
+
+		fse->min_width = ARDUCAM_EMBEDDED_LINE_WIDTH;
+		fse->max_width = fse->min_width;
+		fse->min_height = ARDUCAM_NUM_EMBEDDED_LINES;
+		fse->max_height = fse->min_height;
 	}
+
 	return -EINVAL;
+}
+
+static void arducam_update_metadata_pad_format(struct v4l2_subdev_format *fmt)
+{
+	fmt->format.width = ARDUCAM_EMBEDDED_LINE_WIDTH;
+	fmt->format.height = ARDUCAM_NUM_EMBEDDED_LINES;
+	fmt->format.code = MEDIA_BUS_FMT_SENSOR_DATA;
+	fmt->format.field = V4L2_FIELD_NONE;
 }
 
 static int arducam_csi2_get_fmt(struct v4l2_subdev *sd,
@@ -575,22 +629,28 @@ static int arducam_csi2_get_fmt(struct v4l2_subdev *sd,
 	struct arducam *priv = to_arducam(sd);
 	struct arducam_format *current_format;
 	
-	if (format->pad != 0)
+	if (format->pad >= NUM_PADS)
 		return -EINVAL;
 
 	mutex_lock(&priv->mutex);
-	current_format = &priv->supported_formats[priv->current_format_idx];
-	format->format.width =
-		current_format->resolution_set[priv->current_resolution_idx].width;
-	format->format.height =
-		current_format->resolution_set[priv->current_resolution_idx].height;
-	format->format.code = current_format->mbus_code;
-	format->format.field = V4L2_FIELD_NONE;
-	format->format.colorspace = V4L2_COLORSPACE_SRGB;
 
-	v4l2_dbg(1, debug, sd, "%s: width: (%d) height: (%d) code: (0x%X)\n",
-		__func__, format->format.width,format->format.height,
-			format->format.code);
+	if (format->pad == IMAGE_PAD) {
+		current_format = &priv->supported_formats[priv->current_format_idx];
+		format->format.width =
+			current_format->resolution_set[priv->current_resolution_idx].width;
+		format->format.height =
+			current_format->resolution_set[priv->current_resolution_idx].height;
+		format->format.code = current_format->mbus_code;
+		format->format.field = V4L2_FIELD_NONE;
+		format->format.colorspace = V4L2_COLORSPACE_SRGB;
+
+		v4l2_dbg(1, debug, sd, "%s: width: (%d) height: (%d) code: (0x%X)\n",
+			__func__, format->format.width,format->format.height,
+				format->format.code);
+	} else {
+		arducam_update_metadata_pad_format(format);
+	}
+
 	mutex_unlock(&priv->mutex);
 	return 0;
 }
@@ -672,53 +732,59 @@ static int arducam_csi2_set_fmt(struct v4l2_subdev *sd,
 	struct arducam *priv = to_arducam(sd);
 	struct arducam_format *supported_formats = priv->supported_formats;
 
-	if (format->pad != 0)
+	if (format->pad >= NUM_PADS)
 		return -EINVAL;
 
-	format->format.colorspace = V4L2_COLORSPACE_SRGB;
-	format->format.field = V4L2_FIELD_NONE;
+	if (format->pad == IMAGE_PAD) {
+		format->format.colorspace = V4L2_COLORSPACE_SRGB;
+		format->format.field = V4L2_FIELD_NONE;
 
-	v4l2_dbg(1, debug, sd, "%s: code: 0x%X, width: %d, height: %d\n",
-			 __func__, format->format.code, format->format.width,
-			 	format->format.height);
+		v4l2_dbg(1, debug, sd, "%s: code: 0x%X, width: %d, height: %d\n",
+				__func__, format->format.code, format->format.width,
+					format->format.height);
 
-	i = arducam_csi2_get_fmt_idx_by_code(priv, format->format.code);
-	if (i < 0)
-		return -EINVAL;
+		i = arducam_csi2_get_fmt_idx_by_code(priv, format->format.code);
+		if (i < 0)
+			return -EINVAL;
 
-	// format->format.code = arducam_get_format_code(priv, format->format.code);
+		// format->format.code = arducam_get_format_code(priv, format->format.code);
 
-	for (j = 0; j < supported_formats[i].num_resolution_set; j++) {
-		if (supported_formats[i].resolution_set[j].width 
-				== format->format.width && 
-			supported_formats[i].resolution_set[j].height
-				== format->format.height) {
+		for (j = 0; j < supported_formats[i].num_resolution_set; j++) {
+			if (supported_formats[i].resolution_set[j].width 
+					== format->format.width && 
+				supported_formats[i].resolution_set[j].height
+					== format->format.height) {
 
-			v4l2_dbg(1, debug, sd, "%s: format match.\n", __func__);
-			v4l2_dbg(1, debug, sd, "%s: set format to device: %d %d.\n",
-				__func__, supported_formats[i].index, j);
+				v4l2_dbg(1, debug, sd, "%s: format match.\n", __func__);
+				v4l2_dbg(1, debug, sd, "%s: set format to device: %d %d.\n",
+					__func__, supported_formats[i].index, j);
 
-			arducam_write(priv->client, PIXFORMAT_INDEX_REG,
-				supported_formats[i].index);
-			arducam_write(priv->client, RESOLUTION_INDEX_REG, j);
-            
-			priv->current_format_idx = i;
-			priv->current_resolution_idx = j;
+				arducam_write(priv->client, PIXFORMAT_INDEX_REG,
+					supported_formats[i].index);
+				arducam_write(priv->client, RESOLUTION_INDEX_REG, j);
+				
+				priv->current_format_idx = i;
+				priv->current_resolution_idx = j;
 
-			update_controls(priv);
-			return 0;
+				update_controls(priv);
+				return 0;
+			}
 		}
+		format->format.width = supported_formats[i].resolution_set[0].width;
+		format->format.height = supported_formats[i].resolution_set[0].height;
+
+		arducam_write(priv->client, PIXFORMAT_INDEX_REG,
+			supported_formats[i].index);
+		arducam_write(priv->client, RESOLUTION_INDEX_REG, 0);
+
+		priv->current_format_idx = i;
+		priv->current_resolution_idx = 0;
+		update_controls(priv);
+	} else {
+		arducam_update_metadata_pad_format(format);
 	}
-	format->format.width = supported_formats[i].resolution_set[0].width;
-	format->format.height = supported_formats[i].resolution_set[0].height;
 
-	arducam_write(priv->client, PIXFORMAT_INDEX_REG,
-		supported_formats[i].index);
-	arducam_write(priv->client, RESOLUTION_INDEX_REG, 0);
 
-	priv->current_format_idx = i;
-	priv->current_resolution_idx = 0;
-	update_controls(priv);
 	return 0;
 }
 
@@ -1518,9 +1584,10 @@ static int arducam_probe(struct i2c_client *client,
 	arducam->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	arducam->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
 	/* Initialize source pad */
-	arducam->pad.flags = MEDIA_PAD_FL_SOURCE;
+	arducam->pad[IMAGE_PAD].flags = MEDIA_PAD_FL_SOURCE;
+	arducam->pad[METADATA_PAD].flags = MEDIA_PAD_FL_SOURCE;
 
-	ret = media_entity_pads_init(&arducam->sd.entity, 1, &arducam->pad);
+	ret = media_entity_pads_init(&arducam->sd.entity, NUM_PADS, arducam->pad);
 	if (ret)
 		goto error_handler_free;
 

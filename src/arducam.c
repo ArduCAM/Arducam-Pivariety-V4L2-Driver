@@ -212,15 +212,23 @@ static const char * const arducam_supply_name[] = {
  * - h&v flips
  */
 static const u32 codes[] = {
-	MEDIA_BUS_FMT_SRGGB10_1X10,
-	MEDIA_BUS_FMT_SGRBG10_1X10,
-	MEDIA_BUS_FMT_SGBRG10_1X10,
-	MEDIA_BUS_FMT_SBGGR10_1X10,
-
-	MEDIA_BUS_FMT_SRGGB8_1X8,
-	MEDIA_BUS_FMT_SGRBG8_1X8,
-	MEDIA_BUS_FMT_SGBRG8_1X8,
 	MEDIA_BUS_FMT_SBGGR8_1X8,
+	MEDIA_BUS_FMT_SGBRG8_1X8,
+	MEDIA_BUS_FMT_SGRBG8_1X8,
+	MEDIA_BUS_FMT_SRGGB8_1X8,
+	MEDIA_BUS_FMT_Y8_1X8,
+
+	MEDIA_BUS_FMT_SBGGR10_1X10,
+	MEDIA_BUS_FMT_SGBRG10_1X10,
+	MEDIA_BUS_FMT_SGRBG10_1X10,
+	MEDIA_BUS_FMT_SRGGB10_1X10,
+	MEDIA_BUS_FMT_Y10_1X10,
+
+	MEDIA_BUS_FMT_SBGGR12_1X12,
+	MEDIA_BUS_FMT_SGBRG12_1X12,
+	MEDIA_BUS_FMT_SGRBG12_1X12,
+	MEDIA_BUS_FMT_SRGGB12_1X12,
+	MEDIA_BUS_FMT_Y12_1X12,
 };
 
 #define arducam_NUM_SUPPLIES ARRAY_SIZE(arducam_supply_name)
@@ -659,11 +667,30 @@ static int arducam_csi2_get_fmt_idx_by_code(struct arducam *priv,
 											u32 mbus_code)
 {
 	int i;
+	u32 data_type;
 	struct arducam_format *formats = priv->supported_formats;
+
+	for (i = 0; i < ARRAY_SIZE(codes); i++)
+		if (codes[i] == mbus_code)
+			break;
+
+	if (i / 5 < 3)
+		data_type = i / 5 + 0x2a;
+	else 
+		data_type = U32_MAX;
+
 	for (i = 0; i < priv->num_supported_formats; i++) {
 		if (formats[i].mbus_code == mbus_code)
 			return i; 
 	}
+
+	if (data_type != U32_MAX) {
+		for (i = 0; i < priv->num_supported_formats; i++) {
+			if (formats[i].data_type == data_type)
+				return i; 
+		}
+	}
+
 	return -EINVAL;
 }
 
@@ -747,6 +774,7 @@ static int arducam_csi2_set_fmt(struct v4l2_subdev *sd,
 		if (i < 0)
 			return -EINVAL;
 
+		format->format.code = supported_formats[i].mbus_code;
 		// format->format.code = arducam_get_format_code(priv, format->format.code);
 
 		for (j = 0; j < supported_formats[i].num_resolution_set; j++) {

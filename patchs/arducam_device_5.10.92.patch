@@ -1,0 +1,114 @@
+diff --git a/arch/arm/boot/dts/overlays/Makefile b/arch/arm/boot/dts/overlays/Makefile
+index bff07c1748b7..ba07110d11ff 100644
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -98,6 +98,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
+ 	i2s-gpio28-31.dtbo \
+ 	ilitek251x.dtbo \
+ 	imx219.dtbo \
++	arducam.dtbo \
+ 	imx290.dtbo \
+ 	imx378.dtbo \
+ 	imx477.dtbo \
+diff --git a/arch/arm/boot/dts/overlays/arducam-overlay.dts b/arch/arm/boot/dts/overlays/arducam-overlay.dts
+new file mode 100644
+index 000000000000..854817438b96
+--- /dev/null
++++ b/arch/arm/boot/dts/overlays/arducam-overlay.dts
+@@ -0,0 +1,96 @@
++// SPDX-License-Identifier: GPL-2.0-only
++// Definitions for Arducam Pivariety camera module on VC I2C bus
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/{
++	compatible = "brcm,bcm2835";
++
++	fragment@0 {
++		target = <&i2c0if>;
++		__overlay__ {
++			status = "okay";
++		};
++	};
++
++	clk_frag: fragment@1 {
++		target = <&cam1_clk>;
++		__overlay__ {
++			status = "okay";
++			clock-frequency = <24000000>;
++		};
++	};
++
++	fragment@2 {
++		target = <&i2c0mux>;
++		__overlay__ {
++			status = "okay";
++		};
++	};
++
++	i2c_frag: fragment@100 {
++		target = <&i2c_csi_dsi>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++
++			arducam: arducam@0c {
++				compatible = "arducam, arducam-pivariety";
++				reg = <0x0c>;
++				status = "okay";
++
++				clocks = <&cam1_clk>;
++				clock-names = "xclk";
++
++				VANA-supply = <&cam1_reg>;	/* 2.8v */
++				VDIG-supply = <&cam_dummy_reg>;	/* 1.8v */
++				VDDL-supply = <&cam_dummy_reg>;	/* 1.2v */
++
++				rotation = <180>;
++				orientation = <2>;
++
++				port {
++					arducam_0: endpoint {
++						remote-endpoint = <&csi_ep>;
++						clock-lanes = <0>;
++						data-lanes = <1 2>;
++						clock-noncontinuous;
++						link-frequencies =
++							/bits/ 64 <456000000>;
++					};
++				};
++			};
++		};
++	};
++
++	csi_frag: fragment@101 {
++		target = <&csi1>;
++		csi: __overlay__ {
++			status = "okay";
++			brcm,media-controller;
++
++			port {
++				csi_ep: endpoint {
++					remote-endpoint = <&arducam_0>;
++					clock-lanes = <0>;
++					data-lanes = <1 2>;
++					clock-noncontinuous;
++				};
++			};
++		};
++	};
++
++	__overrides__ {
++		rotation = <&arducam>,"rotation:0";
++		orientation = <&arducam>,"orientation:0";
++		media-controller = <&csi>,"brcm,media-controller?";
++		cam0 = <&i2c_frag>, "target:0=",<&i2c_vc>,
++		       <&csi_frag>, "target:0=",<&csi0>,
++		       <&clk_frag>, "target:0=",<&cam0_clk>,
++		       <&arducam>, "clocks:0=",<&cam0_clk>,
++		       <&arducam>, "VANA-supply:0=",<&cam0_reg>;
++	};
++};

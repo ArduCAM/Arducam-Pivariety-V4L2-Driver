@@ -32,6 +32,8 @@ def parse_cmdline():
 
     parser.add_argument('-d', '--device', nargs=None, default='/dev/video0',
                         help='Specify the device number. default: /dev/video0.')
+    parser.add_argument('--focus-step', type=int, nargs=None, default=50,
+                        help='Specify the focus step.')
 
     return parser.parse_args()
 
@@ -95,7 +97,7 @@ def RenderMiddleText(stdscr,k,focuser):
 
 # parse input key
 def parseKey(k,focuser):
-    focus_step  = 50
+    focus_step  = focuser.step
     if k == ord('r'):
         focuser.reset(Focuser.OPT_FOCUS)
     elif k == curses.KEY_UP:
@@ -148,6 +150,7 @@ def draw_menu(stdscr, focuser):
 def main():
     args = parse_cmdline()
     focuser = Focuser(args.device)
+    focuser.step = args.focus_step
     curses.wrapper(draw_menu, focuser)
 
 if __name__ == "__main__":

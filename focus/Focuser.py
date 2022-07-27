@@ -44,7 +44,10 @@ class Focuser:
                 self.hasFocus = True
                 self.opts[Focuser.OPT_FOCUS]["MIN_VALUE"] = ctrl['minimum']
                 self.opts[Focuser.OPT_FOCUS]["MAX_VALUE"] = ctrl['maximum']
-                self.opts[Focuser.OPT_FOCUS]["DEF_VALUE"] = ctrl['default']
+                if hasattr(ctrl,'default'):
+                    self.opts[Focuser.OPT_FOCUS]["DEF_VALUE"] = ctrl['default']
+                if hasattr(ctrl,'default_value'):
+                    self.opts[Focuser.OPT_FOCUS]["DEF_VALUE"] = ctrl['default_value']
                 self.focus_value = v4l2_utils.get_ctrl(self.fd, Focuser.FOCUS_ID)
         
         if not self.hasFocus:

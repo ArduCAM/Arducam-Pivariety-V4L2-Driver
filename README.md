@@ -1,6 +1,8 @@
 # Arducam-Pivariety-V4L2-Driver
 This driver is used for Arducam mipi camera with Pivariety board 
 
+**Note: Since [5.15.38](https://github.com/raspberrypi/firmware/commit/1441400b6b3bfeac36422a636776c60b8983a7d3), the [arducam-pivariety driver](https://github.com/raspberrypi/linux/blob/rpi-5.15.y/drivers/media/i2c/arducam-pivariety.c) has been merged into the Raspberry Pi kernel and the name of the device tree is changed to arducam-pivariety, so dtoverlay=arducam-pivariety is required to set the overlay**
+
 # Supported Camera Modules
 [B0323](https://www.uctronics.com/arducam-pivariety-16mp-imx298-color-camera-module-for-rpi-4b-3b-2b-3a-pi-zero-cm3-cm4.html)  
 [B0324](https://www.uctronics.com/arducam-pivariety-21mp-imx230-color-camera-module-for-rpi-4b-3b-2b-3a-pi-zero-cm3-cm4.html)  
